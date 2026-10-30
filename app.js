@@ -172,7 +172,7 @@ function lsGet(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* sin almacenamiento */ } }
 function errMsg(e) {
   const m = (e && (e.message || e.error_description)) || String(e);
-  if (/encuestas_folio_uq|duplicate key.*folio/i.test(m)) return 'Ese folio ya tiene una encuesta registrada.';
+  if (/encuestas_folio_uq|duplicate key.*folio/i.test(m)) return 'Esa comanda ya tiene una encuesta registrada hoy.';
   if (/Failed to fetch|NetworkError|network/i.test(m)) return 'Sin conexión a internet. Revisa el wifi e intenta de nuevo.';
   if (/Invalid login/i.test(m)) return 'Usuario o contraseña incorrectos.';
   return m;
@@ -412,7 +412,7 @@ function formCitaManual() {
       <label class="f">Servicio<input type="text" id="cServicio" list="lServiciosC" placeholder="Elige o escribe" required></label>
       <label class="f">Estilista<input type="text" id="cEstilista" list="lEstilistasC" placeholder="Elige o escribe" required></label>
       <label class="f">WhatsApp del cliente<input type="tel" id="cTel" inputmode="numeric" placeholder="10 dígitos"></label>
-      <label class="f">Folio del ticket (opcional)<input type="text" id="cFolio" placeholder="Si ya lo tienes"></label>
+      <label class="f">Número de comanda (opcional)<input type="text" id="cFolio" placeholder="Si ya la tienes"></label>
     </div>
     <datalist id="lServiciosC">${ser.map((s) => `<option value="${esc(s)}">`).join('')}</datalist>
     <datalist id="lEstilistasC">${est.map((s) => `<option value="${esc(s)}">`).join('')}</datalist>
@@ -502,7 +502,7 @@ function renderForm() {
       <label class="f">Servicio<input type="text" id="fServicio" list="lServicios" value="${esc(f.servicio)}" placeholder="Elige o escribe"></label>
       <label class="f">Estilista<input type="text" id="fEstilista" list="lEstilistas" value="${esc(f.estilista)}" placeholder="Elige o escribe"></label>
       <label class="f">WhatsApp del cliente<input type="tel" id="fTel" inputmode="numeric" value="${esc(f.telefono)}" placeholder="10 dígitos"></label>
-      <label class="f">Folio del ticket${S.aj.folio_obligatorio ? '' : ' (opcional)'}<input type="text" id="fFolio" value="${esc(f.folio)}" placeholder="Folio de venta"></label>
+      <label class="f">Número de comanda${S.aj.folio_obligatorio ? '' : ' (opcional)'}<input type="text" id="fFolio" value="${esc(f.folio)}" placeholder="Comanda del servicio"></label>
     </div>
     <datalist id="lServicios">${ser.map((s) => `<option value="${esc(s)}">`).join('')}</datalist>
     <datalist id="lEstilistas">${est.map((s) => `<option value="${esc(s)}">`).join('')}</datalist>
@@ -593,7 +593,7 @@ function validarForm() {
   if (!f.mascota.trim()) falta.push('perrito');
   if (!f.servicio.trim()) falta.push('servicio');
   if (!f.estilista.trim()) falta.push('estilista');
-  if (S.aj.folio_obligatorio && !f.folio.trim()) falta.push('folio del ticket');
+  if (S.aj.folio_obligatorio && !f.folio.trim()) falta.push('número de comanda');
   if (falta.length) { toast('Falta: ' + falta.join(', '), true); return false; }
   if (f.telefono && !normTel(f.telefono)) { toast('El WhatsApp debe tener 10 dígitos.', true); return false; }
   return true;
@@ -602,9 +602,9 @@ function validarForm() {
 async function folioLibre() {
   const folio = S.form.folio.trim();
   if (!folio) return true;
-  const { data, error } = await sb.from('encuestas').select('id').eq('folio', folio).limit(1);
+  const { data, error } = await sb.from('encuestas').select('id').eq('folio', folio).eq('fecha', hoy()).limit(1);
   if (error) { toast(errMsg(error), true); return false; }
-  if (data && data.length) { toast('Ese folio ya tiene una encuesta registrada.', true); return false; }
+  if (data && data.length) { toast('Esa comanda ya tiene una encuesta registrada hoy.', true); return false; }
   return true;
 }
 
@@ -660,7 +660,7 @@ function renderCanje(res) {
     if (error) { out.innerHTML = `<div class="notice bad">${esc(errMsg(error))}</div>`; return; }
     if (!data) { out.innerHTML = `<div class="notice bad">No existe el código ${esc(c)}.</div>`; return; }
     const e2 = data.encuestas || {};
-    const det = `<div style="font-weight:600;margin-top:4px">${esc(data.opcion)} · ${esc(e2.mascota || '')}${e2.cliente ? ' (' + esc(e2.cliente) + ')' : ''}${e2.folio ? ' · folio ' + esc(e2.folio) : ''}</div>`;
+    const det = `<div style="font-weight:600;margin-top:4px">${esc(data.opcion)} · ${esc(e2.mascota || '')}${e2.cliente ? ' (' + esc(e2.cliente) + ')' : ''}${e2.folio ? ' · comanda ' + esc(e2.folio) : ''}</div>`;
     if (data.canjeado_en) { out.innerHTML = `<div class="notice bad"><div class="grow">Ya se canjeó el ${fFecha(fechaLocalDeTs(data.canjeado_en))}.${det}</div></div>`; return; }
     if (data.vence < hoy()) { out.innerHTML = `<div class="notice warn"><div class="grow">Venció el ${fFecha(data.vence)}.${det}</div></div>`; return; }
     out.innerHTML = `<div class="notice good"><div class="grow">Válido hasta el ${fFecha(data.vence)}.${det}</div>
@@ -709,7 +709,7 @@ const CAMPOS_AGENDA = [
   ['estilista', 'Estilista', /prestador|profesional|estilista|staff|empleado|recurso|groomer/i],
   ['telefono', 'Teléfono', /tel[eé]fono|celular|whats|m[oó]vil|phone|cel/i],
   ['estado', 'Estado', /estado|status|asistencia/i],
-  ['folio', 'Folio (opcional)', /folio|ticket|venta|id reserva/i]
+  ['folio', 'Comanda (opcional)', /comanda|folio|ticket|venta|id reserva/i]
 ];
 
 function cargarXLSX() {
@@ -1413,7 +1413,7 @@ function bindResultados() {
 function exportarCSV() {
   const D = S.res.data; if (!D || !D.encuestas.length) return toast('No hay datos para exportar.', true);
   const pq = S.aj.preguntas;
-  const head = ['fecha', 'hora', 'estado', 'folio', 'servicio', 'estilista', 'perrito', 'cliente', 'whatsapp', ...pq.map((p) => p.texto), 'motivos', 'recomendaria', 'lo_mejor', 'comentario', 'segundos', 'satisfecho', 'contactado', 'verificacion'];
+  const head = ['fecha', 'hora', 'estado', 'comanda', 'servicio', 'estilista', 'perrito', 'cliente', 'whatsapp', ...pq.map((p) => p.texto), 'motivos', 'recomendaria', 'lo_mejor', 'comentario', 'segundos', 'satisfecho', 'contactado', 'verificacion'];
   const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = D.encuestas.map((e) => [e.fecha, new Date(e.creado).toTimeString().slice(0, 5), e.estado, e.folio, e.servicio, e.estilista, e.mascota, e.cliente, e.telefono,
     ...pq.map((p) => (e.respuestas && e.respuestas[p.id] ? ESCALA[e.respuestas[p.id] - 1].t : '')),
@@ -1487,7 +1487,7 @@ function renderAjustes() {
         </div></section>
       <section class="card"><h2>Reglas</h2>
         <div class="fields" style="margin-top:12px">
-          <label class="switch full" style="grid-column:1/-1"><input type="checkbox" id="aFolio" ${a.folio_obligatorio ? 'checked' : ''}> Pedir folio del ticket (no deja repetir folios)</label>
+          <label class="switch full" style="grid-column:1/-1"><input type="checkbox" id="aFolio" ${a.folio_obligatorio ? 'checked' : ''}> Pedir número de comanda (no deja repetir la misma comanda en el día)</label>
           <label class="f">No pedir encuesta al mismo cliente antes de (días)<input type="number" id="aDias" min="0" value="${a.dias_entre_encuestas}"></label>
           <label class="f">Sugerir “no volver a preguntar” tras (rechazos)<input type="number" id="aRech" min="1" value="${a.rechazos_sugerir}"></label>
           <label class="f">Verificar 1 de cada (encuestas buenas)<input type="number" id="aVer" min="1" value="${a.verificar_cada}"></label>
