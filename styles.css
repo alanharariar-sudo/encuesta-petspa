@@ -275,3 +275,6 @@ tr:last-child td { border-bottom: 0; }
 .modal-bg { position: fixed; inset: 0; background: rgba(20, 25, 35, .45); z-index: 80; display: grid; place-items: center; padding: 16px; }
 .modal { background: #fff; border-radius: 20px; padding: 20px; width: min(640px, 100%); max-height: 90vh; overflow-y: auto; }
 .modal h2 { margin-bottom: 10px; }
+.cita { cursor: pointer; }
+.cita .quitar { display: inline-grid; place-items: center; min-width: 30px; height: 30px; padding: 0 8px; border-radius: 9px; border: 1.5px solid #f2c5c5; color: var(--danger); font-weight: 900; font-size: .85rem; background: #fff; }
+.cita .quitar:hover { background: var(--danger-soft); }

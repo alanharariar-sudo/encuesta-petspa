@@ -372,8 +372,11 @@ function renderCitas() {
   el.innerHTML = `
     <div class="row between">
       <div><h2>Citas de hoy</h2><div class="tiny">${fFecha(hoy())}</div></div>
-      <label class="btn small" style="cursor:pointer">${ICONS.subir} Subir citas de AgendaPro
-        <input type="file" id="fileAgenda" accept=".xlsx,.xls,.csv" hidden></label>
+      <div class="row">
+        <button class="btn small" id="btnCitaManual">+ Agregar cita</button>
+        <label class="btn small" style="cursor:pointer">${ICONS.subir} Subir citas de AgendaPro
+          <input type="file" id="fileAgenda" accept=".xlsx,.xls,.csv" hidden></label>
+      </div>
     </div>
     ${total ? `
       <div style="margin:12px 0 10px">
@@ -382,10 +385,77 @@ function renderCitas() {
         <div class="progress-line"><i style="width:${aplica.length ? (aplicaHechas / aplica.length) * 100 : 0}%"></i></div>
       </div>
       <div class="citas">${S.citas.map(citaHtml).join('')}</div>`
-    : `<div class="empty">No hay citas cargadas para hoy.<br>Exporta las reservas del día en AgendaPro y súbelas aquí, o captura la visita a mano abajo.</div>`}
+    : `<div class="empty">No hay citas cargadas para hoy.<br>Agrega las citas a mano con “+ Agregar cita” o sube el reporte de AgendaPro.</div>`}
 `;
   $('#fileAgenda').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) importarAgenda(f); };
-  $$('.cita', el).forEach((b) => (b.onclick = () => elegirCita(+b.dataset.id)));
+  $('#btnCitaManual').onclick = () => formCitaManual();
+  $$('.cita', el).forEach((b) => (b.onclick = (ev) => {
+    if (ev.target.closest('[data-quitar]')) return;
+    elegirCita(+b.dataset.id);
+  }));
+  $$('[data-quitar]', el).forEach((x) => (x.onclick = (ev) => { ev.stopPropagation(); quitarCitaManual(+x.dataset.quitar, x); }));
+}
+
+function formCitaManual() {
+  const est = S.estilistas.filter((e) => e.activo).map((e) => e.nombre);
+  const ser = S.servicios.filter((e) => e.activo).map((e) => e.nombre);
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = `<form class="modal" id="citaForm">
+    <h2>Agregar cita</h2>
+    <p class="muted" style="margin-top:0">Queda guardada en la lista para pasarle la encuesta al entregar al perrito.</p>
+    <div class="fields">
+      <label class="f">Fecha<input type="date" id="cFecha" value="${hoy()}" required></label>
+      <label class="f">Hora<input type="time" id="cHora" required></label>
+      <label class="f">Perrito<input type="text" id="cMascota" placeholder="Nombre del perrito" required></label>
+      <label class="f">Dueño<input type="text" id="cCliente" placeholder="Nombre del cliente"></label>
+      <label class="f">Servicio<input type="text" id="cServicio" list="lServiciosC" placeholder="Elige o escribe" required></label>
+      <label class="f">Estilista<input type="text" id="cEstilista" list="lEstilistasC" placeholder="Elige o escribe" required></label>
+      <label class="f">WhatsApp del cliente<input type="tel" id="cTel" inputmode="numeric" placeholder="10 dígitos"></label>
+      <label class="f">Folio del ticket (opcional)<input type="text" id="cFolio" placeholder="Si ya lo tienes"></label>
+    </div>
+    <datalist id="lServiciosC">${ser.map((s) => `<option value="${esc(s)}">`).join('')}</datalist>
+    <datalist id="lEstilistasC">${est.map((s) => `<option value="${esc(s)}">`).join('')}</datalist>
+    <div class="row" style="margin-top:16px;justify-content:flex-end">
+      <button class="btn ghost" type="button" id="cCancel">Cancelar</button>
+      <button class="btn" type="submit" data-otra="1">Guardar y agregar otra</button>
+      <button class="btn primary" type="submit">Guardar cita</button></div>
+  </form>`;
+  document.body.appendChild(bg);
+  $('#cCancel', bg).onclick = () => bg.remove();
+  setTimeout(() => $('#cHora', bg).focus(), 50);
+  $('#citaForm', bg).onsubmit = async (e) => {
+    e.preventDefault();
+    const otra = e.submitter && e.submitter.dataset.otra;
+    const v = (id) => $('#' + id, bg).value.trim();
+    const telRaw = v('cTel');
+    const tel = normTel(telRaw);
+    if (telRaw && !tel) return toast('El WhatsApp debe tener 10 dígitos.', true);
+    const row = {
+      clave: `manual|${Date.now()}|${Math.random().toString(36).slice(2, 8)}`,
+      fecha: v('cFecha'), hora: v('cHora'), mascota: v('cMascota'), cliente: v('cCliente') || null,
+      servicio: v('cServicio'), estilista: v('cEstilista'), telefono: tel || null, folio: v('cFolio') || null, estado: 'Manual'
+    };
+    const btns = $$('button[type=submit]', bg); btns.forEach((b) => (b.disabled = true));
+    const { error } = await sb.from('citas').insert(row);
+    btns.forEach((b) => (b.disabled = false));
+    if (error) return toast(errMsg(error), true);
+    toast(row.fecha === hoy() ? `Cita de ${row.mascota} guardada.` : `Cita de ${row.mascota} guardada para el ${fFecha(row.fecha)}.`);
+    cargarCitas();
+    if (otra) {
+      ['cHora', 'cMascota', 'cCliente', 'cTel', 'cFolio'].forEach((id) => ($('#' + id, bg).value = ''));
+      $('#cHora', bg).focus();
+    } else bg.remove();
+  };
+}
+
+async function quitarCitaManual(id, btn) {
+  if (btn.dataset.seguro !== '1') { btn.dataset.seguro = '1'; btn.textContent = '¿Quitar?'; setTimeout(() => { if (btn.isConnected) { btn.dataset.seguro = ''; btn.textContent = '×'; } }, 3000); return; }
+  const { error } = await sb.from('citas').delete().eq('id', id);
+  if (error) return toast(errMsg(error), true);
+  if (S.selCita === id) limpiarForm();
+  toast('Cita quitada.');
+  cargarCitas();
 }
 
 function citaHtml(c) {
@@ -398,11 +468,13 @@ function citaHtml(c) {
   else if (i.noEnc) { pill = '<span class="pill bad">No encuestar</span>'; done = true; }
   else if (i.reciente !== undefined) { pill = `<span class="pill warn">Contestó hace ${i.reciente} d</span>`; }
   else pill = '<span class="pill brand">Pendiente</span>';
-  return `<button class="cita ${done ? 'done' : ''} ${S.selCita === c.id ? 'sel' : ''}" data-id="${c.id}">
+  const manual = String(c.clave || '').startsWith('manual|');
+  const quitar = manual && !i.hecha ? `<span class="quitar" role="button" tabindex="0" data-quitar="${c.id}" title="Quitar cita">×</span>` : '';
+  return `<div class="cita ${done ? 'done' : ''} ${S.selCita === c.id ? 'sel' : ''}" data-id="${c.id}" role="button" tabindex="0">
     <span class="hora">${esc(c.hora || '—')}</span>
-    <span><div class="who2">${esc(c.mascota || c.cliente || 'Sin nombre')}</div>
+    <span><div class="who2">${esc(c.mascota || c.cliente || 'Sin nombre')}${manual ? ' <span class="pill gray" style="margin-left:4px">Manual</span>' : ''}</div>
       <div class="meta">${esc([c.mascota ? c.cliente : '', c.servicio, c.estilista].filter(Boolean).join(' · '))}</div></span>
-    ${pill}</button>`;
+    <span class="row" style="gap:6px;flex-wrap:nowrap">${pill}${quitar}</span></div>`;
 }
 
 function elegirCita(id) {
